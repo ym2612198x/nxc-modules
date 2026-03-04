@@ -8,7 +8,7 @@ import sys
 
 class NXCModule:
     """
-    Lists enabled computer accounts whose pwdLastSet is older than supplied DAYS
+    Lists enabled computer accounts whose pwdLastSet is older than supplied DAYS.
     """
 
     name = "stale-computers"
@@ -17,16 +17,34 @@ class NXCModule:
     category = CATEGORY.ENUMERATION
 
     def options(self, context, module_options):
+        """
+        DAYS        Number of days to check pwdLastSet against (required)
+        SAM         Print only sAMAccountName (True/False, default: False)
 
-        if "DAYS" not in module_options:
-            context.log.error("DAYS option is required!")
+        Example:
+        nxc ldap <target> -u user -p pass -M stale-computers -o DAYS=30
+        nxc ldap <target> -u user -p pass -M stale-computers -o DAYS=30,SAM=True
+        """
+
+        if not module_options or "DAYS" not in module_options:
+            context.log.fail("DAYS option is required")
             sys.exit(1)
 
         try:
             self.DAYS = int(module_options["DAYS"])
         except ValueError:
-            context.log.error("DAYS must be an integer")
+            context.log.fail("DAYS must be an integer")
             sys.exit(1)
+
+        self.SAM = False
+        if "SAM" in module_options:
+            if module_options["SAM"] == "True":
+                self.SAM = True
+            elif module_options["SAM"] == "False":
+                self.SAM = False
+            else:
+                context.log.fail("SAM must be True or False")
+                sys.exit(1)
 
     def filetime_to_dt(self, filetime):
         return datetime(1601, 1, 1, tzinfo=timezone.utc) + timedelta(microseconds=int(filetime) / 10)
@@ -36,10 +54,9 @@ class NXCModule:
         search_filter = "(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
 
         try:
-            context.log.debug(f"Search Filter={search_filter}")
             resp = connection.ldap_connection.search(
                 searchFilter=search_filter,
-                attributes=["dNSHostName", "pwdLastSet"],
+                attributes=["dNSHostName", "sAMAccountName", "pwdLastSet"],
                 sizeLimit=0
             )
         except LDAPSearchError as e:
@@ -50,7 +67,6 @@ class NXCModule:
                 return False
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=self.DAYS)
-
         found = False
 
         for item in resp:
@@ -58,31 +74,37 @@ class NXCModule:
                 continue
 
             hostname = None
+            sam = None
             pwd_last_set_raw = None
 
-            try:
-                for attribute in item["attributes"]:
-                    if str(attribute["type"]) == "dNSHostName":
-                        hostname = str(attribute["vals"][0])
-                    elif str(attribute["type"]) == "pwdLastSet":
-                        pwd_last_set_raw = str(attribute["vals"][0])
+            for attribute in item["attributes"]:
+                attr_type = str(attribute["type"])
 
-                if not hostname or not pwd_last_set_raw or pwd_last_set_raw == "0":
-                    continue
+                if attr_type == "dNSHostName":
+                    hostname = str(attribute["vals"][0])
+                elif attr_type == "sAMAccountName":
+                    sam = str(attribute["vals"][0])
+                elif attr_type == "pwdLastSet":
+                    pwd_last_set_raw = str(attribute["vals"][0])
 
-                pwd_dt = self.filetime_to_dt(pwd_last_set_raw)
+            if not pwd_last_set_raw or pwd_last_set_raw == "0":
+                continue
 
-                if pwd_dt < cutoff:
-                    if not found:
-                        context.log.success(
-                            f"Enabled computers with pwdLastSet older than {self.DAYS} days:"
-                        )
-                        found = True
+            pwd_dt = self.filetime_to_dt(pwd_last_set_raw)
 
-                    context.log.highlight(f"{hostname} - pwdLastSet: {pwd_dt}")
+            if pwd_dt < cutoff:
+                if not found:
+                    context.log.success(
+                        f"Enabled computers with pwdLastSet older than {self.DAYS} days:"
+                    )
+                    found = True
 
-            except Exception:
-                context.log.debug("Error processing entry", exc_info=True)
+                if self.SAM:
+                    if sam:
+                        context.log.highlight(f"{sam}")
+                else:
+                    if hostname:
+                        context.log.highlight(f"{hostname} - pwdLastSet: {pwd_dt}")
 
         if not found:
             context.log.success("No matching computer accounts found.")
