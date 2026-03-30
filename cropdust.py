@@ -105,9 +105,12 @@ class CropDuster:
             # check if a specific folder was chosen
             for share in suitable_shares:
                 if self.folder != "All":
+                    self.logger.display(f'Folder to use:')
+                    self.logger.success(f'{self.folder}')
                     self.process_dirs(share, self.folder)
                 else:
                     self.process_dirs(share, "\\")
+                self.logger.display('')
 
         # some unknown error
         except Exception as e:
@@ -144,7 +147,7 @@ class CropDuster:
         return item_list
 
 
-    def process_dirs(self, share, folder="\\"):
+    def process_dirs(self, share, folder):
 
         try:
             items = self.smb.conn.listPath(share, folder + "*")
@@ -204,7 +207,7 @@ class NXCModule:
     supported_protocols = ["smb"]
     opsec_safe = False
     multiple_hosts = True
-    category = CATEGORY.CREDENTIAL_DUMPING
+    category = CATEGORY.PRIVILEGE_ESCALATION
 
 
     def options(self, context, module_options):
