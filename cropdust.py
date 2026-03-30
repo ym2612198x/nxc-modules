@@ -102,6 +102,7 @@ class CropDuster:
                 self.logger.fail('No suitable shares')
                 return
 
+            # check if a specific folder was chosen
             for share in suitable_shares:
                 if self.folder != "All":
                     self.process_dirs(share, self.folder)
@@ -210,12 +211,12 @@ class NXCModule:
         """
         Recursively drop a .searchConnector-ms/.library-ms file into folders on writable shares.
 
-        URL                 URL in the dropped file, format is {HOST}@{PORT} - default is "microsoft.com"
+        URL                 URL in the dropped file to call back to, format is {HOST}@{PORT} - default is "microsoft.com@80"
         SHARE               Specify a share to target - default is all writable shares EXCEPT for C$ and ADMIN$
         FOLDER              Specify a specific folder to write to - default is recursive
         FORCE               Force write attempt on chosen shares - default is False
         FILENAME            Specify the filename used WITHOUT extension - default is "Documents"
-        TYPE                Specificy type (search/library) - default is "search"
+        TYPE                Specify type of file to drop (search/library) - default is "search"
         CLEANUP             Clean up dropped files - default is False
         """
         
