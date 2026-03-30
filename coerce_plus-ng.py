@@ -9,7 +9,7 @@ import time
 
 
 class NXCModule:
-    name = "coerce_plus_ng"
+    name = "coerce_plus-ng"
     description = "Module to check if the Target is vulnerable to any coerce vulns. Set LISTENER IP for coercion. Also has HTTP auth options where available and a delay."
     supported_protocols = ["smb"]
     category = CATEGORY.PRIVILEGE_ESCALATION
