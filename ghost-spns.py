@@ -17,8 +17,8 @@ class NXCModule:
         OUTPUT      Output to file in addition to printing to console
         Examples
         --------
-        netexec ldap $DC-IP -u $username -p $password -M enum-spns
-        netexec ldap $DC-IP -u $username -p $password -M enum-spns -o OUTPUT=/tmp/spns.txt
+        netexec ldap $DC-IP -u $username -p $password -M ghost-spns
+        netexec ldap $DC-IP -u $username -p $password -M ghost-spns -o OUTPUT=/tmp/spns.txt
         """
         self.output_file = None
         if "OUTPUT" in module_options:
