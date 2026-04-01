@@ -7,7 +7,7 @@ GUID_REGEX = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 
 class NXCModule:
-    name = "ghosts-spns"
+    name = "ghost-spns"
     description = "Finds dangling SPNs for all computer accounts in the domain"
     supported_protocols = ["ldap"]
     category = CATEGORY.ENUMERATION
