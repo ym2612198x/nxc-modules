@@ -28,8 +28,15 @@ class CropDuster:
         self.share = share
         self.folders = folders
 
+    
+    def log_to_file(self, action, remote_path):
+        
+        with open("cropdust.log", "a") as f:
+            f.write(f"{action} \\\\{self.host}\\{self.share}{remote_path}\n")
 
+    
     def get_dirs(self, share, path="\\"):
+        
         results = []
         items = self.smb.conn.listPath(share, path + "*")
 
@@ -74,10 +81,12 @@ class CropDuster:
                 if self.cleanup:
                     self.smb.conn.deleteFile(self.share, remote_path)
                     self.logger.success(f"Cleaned: {self.share}{remote_path}")
+                    self.log_to_file("CLEAN", remote_path)
                 else:
                     with open(self.scfile_path, "rb") as scfile:
                         self.smb.conn.putFile(self.share, remote_path, scfile.read)
                         self.logger.success(f"Dropped: {self.share}{remote_path}")
+                        self.log_to_file("DROP", remote_path)
             except Exception as e:
                 if "0xc0000022 - STATUS_ACCESS_DENIED" in str(e):
                     self.logger.fail(f"{dir} not writable, skipping")
