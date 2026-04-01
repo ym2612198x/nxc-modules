@@ -54,7 +54,8 @@ class CropDuster:
         # if all folders on the share were chosen, get a recursive list of them
         if self.folders == "All":
             self.logger.display(f"Getting all accessible directories in {self.share}")
-            all_dirs = self.get_dirs(self.share)
+            all_dirs.append("\\")  # always include root
+            all_dirs.extend(self.get_dirs(self.share))
         # otherwise, just set the all_dirs list to self.folders
         else:
             dir_path = f"{self.folders}\\"
