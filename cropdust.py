@@ -57,6 +57,8 @@ class CropDuster:
             all_dirs.append("\\")  # always include root
             all_dirs.extend(self.get_dirs(self.share))
         # otherwise, just set the all_dirs list to self.folders
+        if self.folders == "\\":
+            dir_path = "\\"
         else:
             dir_path = f"{self.folders}\\"
             all_dirs.append(dir_path)
