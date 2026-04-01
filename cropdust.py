@@ -15,7 +15,7 @@ class CropDuster:
         share,
         folders):
 
-            
+
         self.smb = smb
         self.host = self.smb.conn.getRemoteHost()
         self.max_connection_attempts = 5
@@ -28,7 +28,7 @@ class CropDuster:
         self.share = share
         self.folders = folders
 
-    
+
     def get_dirs(self, share, path="\\"):
         results = []
         items = self.smb.conn.listPath(share, path + "*")
@@ -49,26 +49,27 @@ class CropDuster:
 
 
     def do_cropdust(self):
- 
+
         all_dirs = []
         # if all folders on the share were chosen, get a recursive list of them
         if self.folders == "All":
             self.logger.display(f"Getting all accessible directories in {self.share}")
-            all_dirs.append("\\")  # always include root
+            all_dirs.append("\\") # always include share base
             all_dirs.extend(self.get_dirs(self.share))
-        # otherwise, just set the all_dirs list to self.folders
-        if self.folders == "\\":
+        if self.folders == "BASE":
             dir_path = "\\"
+            all_dirs.append(dir_path)
+        # otherwise, just set the all_dirs list to self.folders
         else:
             dir_path = f"{self.folders}\\"
             all_dirs.append(dir_path)
-  
+
         for dir in all_dirs:
             # drop or clean
             extension = ".searchConnector-ms" if self.type == "search" else ".library-ms"
             file_name = self.filename + extension
             remote_path = ntpath.join(dir, file_name)
-            #self.logger.display(f'{remote_path}')
+            # self.logger.display(f'{remote_path}')
             try:
                 if self.cleanup:
                     self.smb.conn.deleteFile(self.share, remote_path)
