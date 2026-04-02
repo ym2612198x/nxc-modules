@@ -63,7 +63,7 @@ class CropDuster:
             self.logger.display(f"Getting all accessible directories in {self.share}")
             all_dirs.append("\\") # always include share base
             all_dirs.extend(self.get_dirs(self.share))
-        if self.folders == "BASE":
+        elif self.folders == "BASE":
             dir_path = "\\"
             all_dirs.append(dir_path)
         # otherwise, just set the all_dirs list to self.folders
@@ -76,7 +76,7 @@ class CropDuster:
             extension = ".searchConnector-ms" if self.type == "search" else ".library-ms"
             file_name = self.filename + extension
             remote_path = ntpath.join(dir, file_name)
-            # self.logger.display(f'{remote_path}')
+            self.logger.display(f'{remote_path}')
             try:
                 if self.cleanup:
                     self.smb.conn.deleteFile(self.share, remote_path)
