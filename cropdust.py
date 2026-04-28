@@ -72,6 +72,7 @@ class CropDuster:
             all_dirs.append(dir_path)
 
         for dir in all_dirs:
+            self.logger.debug(f"Dir: {dir}")
             for local_path in self.scfile_path:
                 file_name = ntpath.basename(local_path)
                 remote_path = ntpath.join(dir, file_name)
@@ -110,7 +111,7 @@ class NXCModule:
         Recursively drop a .searchConnector-ms/.library-ms file into folders on writable shares.
 
         SHARE               Specify a share to target
-        URL                 URL in the dropped file to call back to, format is {HOST}@{PORT} - default is "microsoft.com@80"
+        URL                 URL in the dropped file to call back to, format is {HOST}@{PORT}
         FOLDER              Specify a specific folder to write to - default is recursive
         FILENAME            Specify the filename used WITHOUT extension - default is "Documents"
         TYPE                Specify type of file to drop (search/library/both) - default is "search"
@@ -123,10 +124,13 @@ class NXCModule:
             self.cleanup = bool(module_options["CLEANUP"])
 
         # url to point to in the dropped file
-        self.url = "microsoft.com"
+        self.url = None
         if "URL" in module_options:
             self.url = str(module_options["URL"])
-
+        else:
+            context.log.fail("URL is required")
+            quit()
+        
         # the name of the file
         self.filename = "Documents"
         if "FILENAME" in module_options:
